@@ -1,0 +1,317 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+import re
+import sys
+reload(sys)
+import codecs
+sys.setdefaultencoding("utf-8")
+import os
+
+#import re
+#import ssf
+#from util import *
+from bs4 import BeautifulSoup
+
+class SSFInfo():
+    def __init__(self, sentenceList, globalWordList):
+        self.sentenceList = sentenceList
+        self.globalWordList = globalWordList
+
+
+class Node():
+    def __init__(self,node_name,node_relation,node_parent):
+        self.nodeName=node_name
+        self.nodeRelation=node_relation
+        self.nodeParent=node_parent
+        self.childList=[]
+        self.nodeLevel=-1
+        self.chunkNum=-1
+    def addChild(self,child):
+        self.childList.append(child)
+    def getChunkName(self,node_name):
+        i=len(node_name)
+        while (node_name[i-1]>="0" and node_name[i-1]<="9"):
+            i-=1
+#		print "qwe",node_name,node_name[:i]
+        return node_name[:i]
+
+class Sentence():
+    def __init__(self,sentence_num):
+#		print "-"*30,"adding sentence"
+        self.sentenceNum=sentence_num
+        self.chunkList=[]
+        self.wordNumList=[]
+        self.nodeDict={}
+        self.rootNode=[]
+        return
+    def addChunk(self,chunk):
+#		print "-"*30,"adding chunk"
+        self.chunkList.append(chunk)
+    def addWord(self,word):
+#		print "-"*30,"adding word to sentence"
+        self.wordNumList.append(word)
+    def addNode(self,node):
+        print self.sentenceNum ,node.nodeName
+        self.nodeDict[node.nodeName]=node
+    def addChunkNumToNode(self,node_name,chunk_num):
+        self.nodeDict[node_name].chunkNum=chunk_num
+
+class Chunk():
+    def __init__(self,tag,node_name,features_set,sentenceNum,chunk_num):
+#		print "-"*30,"new chunk with tag - %s and f = %s"%(tag,features_string)
+        self.chunkTag=tag
+        self.chunkNum=chunk_num
+        self.nodeName=node_name
+        self.featureSet=features_set
+        self.wordNumList=[]
+        self.sentenceNum=sentenceNum
+    def addWord(self,word):
+#		print "-"*30,"adding word to chunk"
+        self.wordNumList.append(word)
+class Word():
+    def __init__(self,word,tag,features_string,extra_features,sentenceNum,chunkNum):
+#		print "-"*30,"new word- %s with tag - %s and f = %s"%(word,tag,features_string)
+        self.wordTag=tag;
+        self.word=word.decode("utf-8")
+        self.featureSet=FeatureSet(features_string)
+        self.extraFeatureSet=extra_features
+        self.sentenceNum=sentenceNum
+        self.chunkNum=chunkNum
+        self.sense=None
+        self.conn=False
+        self.splitConn=False
+        self.arg1=False
+        self.arg2=False
+        self.relationNum=None
+        self.arg1Span=None
+        self.arg2Span=None
+class FeatureSet():
+    def __init__(self,featureString):
+        self.featureDict={}
+        self.processFeatureString(featureString)
+    def processFeatureString(self,featureString):
+        featureSet=re.split(' ',featureString)
+        featureSet=featureSet[1:]
+        for feature in featureSet:
+#			print feature
+            feature=re.split('=',feature)
+            key=feature[0]
+            value=re.split('\"',feature[1])[1]
+#			print key,"=",value
+            self.featureDict[key]=value
+
+def createChildList(ssfinfo):
+    for sent in ssfinfo.sentenceList:
+        print sent.sentenceNum
+        for i in sent.nodeDict:
+            if sent.nodeDict[i].nodeParent!="None":
+                sent.nodeDict[sent.nodeDict[i].nodeParent].childList.append(i)
+
+def extractExtraSSF(filePath):
+    #filePath=filePath.replace("/ssf/","/ssf_1/") #ssf_1 has no chunk markings
+    print filePath
+    if not os.path.isfile(filePath) :
+        print "No file found"
+        return None
+    fileFD=codecs.open(filePath,"r",encoding="utf-8")
+    data=fileFD.read()
+    fileFD.close()
+    beautData = BeautifulSoup(data)
+    sentenceList=beautData.find_all('sentence')
+    sList=[]
+    for sentence in sentenceList:
+        content=sentence.renderContents()
+        lines=re.split("\n",content)
+        wList=[]
+        for line in lines:
+            columns=line.split("\t")
+            if(len(columns)<4):
+                continue
+
+            f=FeatureSet(columns[3])
+            wList.append(f)
+        sList.append(wList)
+    return sList
+
+def folderWalk(folderPath):
+	fileList = []
+	for dirPath , dirNames , fileNames in os.walk(folderPath) :
+		for fileName in fileNames :
+			fileList.append(os.path.join(dirPath , fileName))
+	return fileList
+
+def createDirectory(filePath):
+	dirPath=os.path.dirname(filePath)
+	print "here XXX",dirPath
+	if not os.path.exists(dirPath):
+		os.makedirs(dirPath)
+
+def fetchLines(lines):
+
+    print 'baba ram rahim ki jai'
+    lineset = []
+    for line in lines:
+        columns = line.split('\t')
+        if len(columns)<4:
+            continue
+        else:
+            lineset += [[columns[1], columns[2], FeatureSet(columns[3])]]
+    return lineset
+
+
+def extractSSFannotations(filePath):
+    fileFD=codecs.open(filePath,"r",encoding="utf-8")
+    data=fileFD.read()
+    fileFD.close()
+    beautData = BeautifulSoup(data)
+    sentenceList=beautData.find_all('sentence')
+    
+
+    #Loading Feature Structures
+    #This is basically a list of lists of feature structures
+    sList=[]
+    for sentence in sentenceList:
+        content=sentence.renderContents()
+        lines=re.split("\n",content)
+        wList=[]
+        for line in lines:
+            columns=line.split("\t")
+            if(len(columns)<4):
+                continue
+
+            f=FeatureSet(columns[3])
+            wList.append(f)
+        sList.append(wList)
+
+
+    sentenceInstList=[]
+    globalWordList=[]
+    sentenceNum=0
+    wordNum=0
+
+    for sentence in sentenceList:
+        #extraSentenceInfo=sList[sentenceNum]
+        sentenceInst=Sentence(sentenceNum)
+        content=sentence.renderContents()
+        lines=re.split("\n",content)
+        chunkInst=None
+        NodeInst=None
+        wordInst=None
+        chunkNum=-1
+        skip=False
+        wNum=0
+        
+        extraSentenceInfo = []
+
+        print 'sentence', sentenceNum
+        
+        #print '\n\n'
+        #print len(lines), '!'*40
+
+        lines = fetchLines(lines)
+        
+
+        #drel resolution
+        iline = 0
+        for line in lines:
+            #print line
+            columns=line.split("\t")
+            if len(columns)<4:
+                #print 'skip'
+                continue
+            featset = FeatureSet(columns[3])
+            fdict = featset.featureDict
+            if 'drel' in fdict.keys():
+                drel = fdict['drel']
+                #print drel
+                ref = drel.split(':')[1]
+                #print ref
+                isubline = 0
+                for subline in lines:
+                    subcolumns = subline.split('\t')
+                    if len(subline.split('\t'))<4:
+                        continue
+                    subfdict = FeatureSet(subcolumns[3]).featureDict
+                    if ref==subfdict['name']:
+                        nref = subfdict['chunktype'].split(':')[1]
+                        break
+                    isubline+=1
+                #print nref
+                fdict['drel'] = drel.split(':')[0]+':'+nref
+            #print '*'*40
+            extraSentenceInfo += [featset]
+            iline+=1
+
+        print 'drels resolved'
+
+        iline = 0
+        prevChunkName = '-'
+        for line in lines:
+            columns=line.split("\t")
+#			print line,"--",len(columns)
+            if(len(columns)<4): #useless line
+                continue
+
+            #print iline, line
+
+            feat_set = extraSentenceInfo[iline]
+            curChunkName = feat_set.featureDict['chunktype'].split(':')[1]
+            
+            if curChunkName != prevChunkName: #CHUNK START
+                #print 'chunk start'
+
+                if prevChunkName!='-': #Ending the previous chunk things
+                    #print nodeInst
+                    sentenceInst.addNode(nodeInst)
+                    if(len(chunkInst.wordNumList)!=0):
+                        sentenceInst.addChunk(chunkInst)
+                        sentenceInst.addChunkNumToNode(nodeInst.nodeName,chunkInst.chunkNum)
+                    else:
+                        print "found file with empty chunk !!!",filePath
+                        chunkNum-=1
+
+                chunkNum+=1
+                featureSetInst=FeatureSet(columns[3])
+                chunkInst=Chunk(columns[2],curChunkName,featureSetInst,sentenceNum,chunkNum)
+                try:
+                    nodeInst=Node(curChunkName,featureSetInst.featureDict["drel"].split(":")[0],featureSetInst.featureDict["drel"].split(":")[1])
+                except Exception as e:
+                    try:
+                        nodeInst=Node(curChunkName,featureSetInst.featureDict["dmrel"].split(":")[0],featureSetInst.featureDict["dmrel"].split(":")[1])
+                    except Exception as er:
+                        print er
+                        nodeInst=Node(curChunkName,"None","None")
+                        print "dmrel not got",featureSetInst.featureDict
+
+                prevChunkName = curChunkName
+            
+            print 'adding word info'
+            ###Adding normal word annotations
+            if(columns[1]=="NULL"):
+                continue
+            try:
+                extraWordInfo=extraSentenceInfo[iline]
+            except:
+                print "Could not match intrachunk and interchunk SSF annotations !!!"
+                print columns[1],columns[2],wordNu
+            wordInst=Word(columns[1],columns[2],columns[3],extraWordInfo,sentenceNum,chunkNum)
+            chunkInst.addWord(wordNum)
+            sentenceInst.addWord(wordNum)
+            globalWordList.append(wordInst)
+            wordNum+=1
+            wNum+=1
+            
+            iline+=1
+
+        if prevChunkName!='-': #Ending the last chunk things
+            sentenceInst.addNode(nodeInst)
+            if(len(chunkInst.wordNumList)!=0):
+                sentenceInst.addChunk(chunkInst)
+                sentenceInst.addChunkNumToNode(nodeInst.nodeName,chunkInst.chunkNum)
+            else:
+                print "found file with empty chunk !!!",filePath
+                chunkNum-=1
+
+        sentenceInstList.append(sentenceInst)
+        sentenceNum+=1
+    return (sentenceInstList,globalWordList)
